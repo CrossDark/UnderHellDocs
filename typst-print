@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# typst-print:typst 编译包装脚本,支持 --print 参数生成打印版 PDF
+# typst-print: wrapper around `typst compile` that adds a --print flag
+#
+# 用法 / Usage:
+#   ./typst-print [--print] <input.typ> [output.pdf] [其他 typst 参数...]
+#
+# 示例 / Examples:
+#   ./typst-print 地狱之下.typ                      # 普通编译
+#   ./typst-print --print 地狱之下.typ 输出.pdf      # 打印版(省墨、单栏、无背景)
+#   ./typst-print --print --root .. 地狱之下.typ     # 打印版 + 自定义 root
+#
+# --print 会被翻译为 typst 的 --input print=true,
+# 文档内通过 sys.inputs.print 读取该值切换打印模式。
+# --print is translated to typst's --input print=true;
+# documents read it via sys.inputs.print to toggle print mode.
+
+set -euo pipefail
+
+PRINT_MODE=false
+ARGS=()
+
+# 解析参数:提取 --print,其余原样传给 typst
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --print)
+      PRINT_MODE=true
+      shift
+      ;;
+    *)
+      ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ "$PRINT_MODE" == "true" ]]; then
+  exec typst compile --input print=true "${ARGS[@]}"
+else
+  exec typst compile "${ARGS[@]}"
+fi

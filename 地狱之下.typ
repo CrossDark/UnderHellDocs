@@ -1,9 +1,14 @@
 #import "../模板/lib.typ": *
 
+// 读取编译时输入变量 --input print=true,未传入时默认 false
+// Read compile-time input --input print=true; defaults to false
+#let print-mode = "print" in sys.inputs and sys.inputs.print == "true"
+
 #show: dndmodule.with(
   title: "地狱之下",
   subtitle: "一个崭新的世界",
   author: "跨越晨昏",
+  print: print-mode,
 )
  
 #set heading(numbering: "1.")
