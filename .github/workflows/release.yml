@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  # ---------- 创建发行版 (最先运行,空壳) ----------
+  create-release:
+    name: 创建发行版
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+    steps:
+      - name: 计算标签名
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_name=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 删除旧的 latest 发行版
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          gh release delete latest --yes --repo "$GITHUB_REPOSITORY" || true
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/latest" || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 创建发行版 (空壳,后续 job 上传附件)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: ${{ steps.meta.outputs.tag_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------- PDF 文档 ----------
+  pdf:
+    name: PDF 文档
+    needs: create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout 文档仓库
+        uses: actions/checkout@v5
+
+      # 文档通过相对路径引用外部资源:
+      #   #import "../模板/lib.typ"            -> 需要相邻的 模板/ 目录
+      #   #image("../图片/地狱与深渊示意图.svg") -> 需要相邻的 图片/ 目录
+      # Makefile 使用 --root .. ,故把依赖放到 $GITHUB_WORKSPACE 的父目录
+      - name: 拉取编译依赖 (模板 + 图片)
+        run: |
+          # 父目录(workspace 的上一层)用于放置 ../模板 与 ../图片
+          PARENT="$(dirname "$GITHUB_WORKSPACE")"
+          # 模板仓库(公开,浅克隆)
+          git clone --depth 1 https://github.com/CrossDark/UnderHellTemplate.git "$PARENT/模板"
+          # 图片目录来自主仓库(公开,浅克隆,仅取需要的目录)
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/CrossDark/UnderHell.git /tmp/main
+          git -C /tmp/main sparse-checkout set 图片
+          cp -r /tmp/main/图片 "$PARENT/图片"
+          echo "依赖已就位于: $PARENT"
+          ls -la "$PARENT"
+
+      - name: Setup Typst
+        uses: typst-community/setup-typst@v4
+
+      - name: Install CJK fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk
+
+      - name: Compile PDF
+        run: make -C . all
+
+      - name: 上传到发行版
+        run: |
+          cp "dist/地狱之下.pdf" "UnderHell.pdf"
+          gh release upload "${{ needs.create-release.outputs.tag_name }}" "UnderHell.pdf" --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
