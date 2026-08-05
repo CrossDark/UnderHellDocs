@@ -66,10 +66,8 @@ jobs:
           PARENT="$(dirname "$GITHUB_WORKSPACE")"
           # 模板仓库(公开,浅克隆)
           git clone --depth 1 https://github.com/CrossDark/UnderHellTemplate.git "$PARENT/模板"
-          # 图片目录来自主仓库(公开,浅克隆,仅取需要的目录)
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/CrossDark/UnderHell.git /tmp/main
-          git -C /tmp/main sparse-checkout set 图片
-          cp -r /tmp/main/图片 "$PARENT/图片"
+          # 图片仓库(独立子存储库,浅克隆)
+          git clone --depth 1 https://github.com/CrossDark/UnderHellImages.git "$PARENT/图片"
           echo "依赖已就位于: $PARENT"
           ls -la "$PARENT"
 
@@ -81,12 +79,15 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-noto-cjk
 
-      - name: Compile PDF
-        run: make -C . all
+      - name: Compile PDF (普通版 + 打印版 + 小屏版)
+        run: make -C . all print screen
 
       - name: 上传到发行版
         run: |
           cp "dist/地狱之下.pdf" "UnderHell.pdf"
-          gh release upload "${{ needs.create-release.outputs.tag_name }}" "UnderHell.pdf" --clobber
+          cp "dist/地狱之下_打印版.pdf" "UnderHell-print.pdf"
+          cp "dist/地狱之下_小屏版.pdf" "UnderHell-screen.pdf"
+          gh release upload "${{ needs.create-release.outputs.tag_name }}" \
+            "UnderHell.pdf" "UnderHell-print.pdf" "UnderHell-screen.pdf" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
